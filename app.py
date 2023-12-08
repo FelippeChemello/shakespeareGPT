@@ -104,6 +104,21 @@ class FeedForward(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+    
+class Block(nn.Module):
+    def __init__(self, number_of_embeddings, number_of_heads):
+        super().__init__()
+        head_size = number_of_embeddings // number_of_heads
+        # Get the connection between the tokens in the context window
+        self.self_attention = MultiHeadAttention(number_of_heads, head_size)
+
+        # Computes the attention scores between the tokens in the context window
+        self.feed_forward = FeedForward(number_of_embeddings)
+
+    def forward(self, x):
+        x = self.self_attention(x)
+        x = self.feed_forward(x)
+        return x
 
 class BigramLanguageModel(nn.Module):
     def __init__(self):
@@ -117,14 +132,11 @@ class BigramLanguageModel(nn.Module):
         # Create a positional embedding table, to make the model aware of the position of the tokens
         self.positional_embedding_table = nn.Embedding(context_window, number_of_embeddings)
 
-        # Create the attention head
-        self.attention_head = MultiHeadAttention(4, number_of_embeddings//4)
-        # Now we have 4 communication channels running in parallel to learn the attention scores
-        # Each channel has a size of number_of_embeddings//4 that when concatenated, results in number_of_embeddings
-
-        self.feed_forward = FeedForward(number_of_embeddings)
-        # Create the feed forward layer, that will be applied after the attention head
-        # This layer will be applied to each token in the context window individually
+        self.blocks = nn.Sequential(
+            Block(number_of_embeddings, number_of_heads=4),
+            Block(number_of_embeddings, number_of_heads=4),
+            Block(number_of_embeddings, number_of_heads=4),
+        )
 
     def forward(self, idx, targets=None):
         token_embeddings = self.token_embedding_table(idx)
@@ -136,13 +148,7 @@ class BigramLanguageModel(nn.Module):
         x = token_embeddings + position_embeddings # Add the two embeddings together - (batch_size, context_window, number_of_embeddings) 
         # X represents now the embeddings of the tokens and their position in the context window
 
-        x = self.attention_head(x) # Apply the attention head
-
-        x = self.feed_forward(x) # Apply the feed forward layer
-        # The feed forward layer applies a non-linearity (ReLU activation) to each token's representation independently. 
-        # This processing step is crucial after the attention mechanism, which aggregates context information from the entire sequence into each token.
-        # The feed forward layer further refines these enriched representations.
-        # It's kind of "letting the network think for itself" and not just relying on the attention mechanism
+        x = self.blocks(x)
 
         logits = self.language_model_head(x)
 
