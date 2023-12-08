@@ -5,10 +5,10 @@ from torch.nn import functional as F
 percent_of_training = 0.9
 context_window = 8
 batch_size = 4
-learning_rate = 1e-2
+learning_rate = 1e-3
 evaluation_iterations = 200
 evaluate_interval = 250
-training_iterations = 1000
+training_iterations = 5000
 number_of_embeddings = 32
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -53,6 +53,37 @@ def estimate_loss():
     return out
 
 
+class Head(nn.Module):
+    def __init__(self, head_size):
+        super().__init__()
+        self.key = nn.Linear(number_of_embeddings, head_size, bias=False)
+        self.query = nn.Linear(number_of_embeddings, head_size, bias=False)
+        self.value = nn.Linear(number_of_embeddings, head_size, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones(context_window, context_window)))
+
+    def forward(self, x):
+        batch_size, context_window_size, number_of_embeddings = x.shape
+        keys = self.key(x)
+        queries = self.query(x)
+
+        # Compute the attention scores, affinities between the keys and the queries
+        wei = queries @ keys.transpose(-2, -1) * number_of_embeddings**-0.5 
+        # Results in (batch_size, context_window_size, context_window_size)
+        # That means for each token in the context window, we have a score for each other token in the context window
+        
+        # Apply the mask to the attention scores
+        wei = wei.masked_fill(self.tril[:context_window_size, :context_window_size] == 0, float('-inf'))
+        # We replace the zeros with -inf, so that when we apply the softmax, the score becomes zero
+        
+        # Apply the softmax to the attention scores
+        wei = F.softmax(wei, dim=-1)
+
+        # Agrregate the values, by multiplying the scores with the values
+        values = self.value(x)
+        out = wei @ values
+
+        return out
+
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -65,14 +96,20 @@ class BigramLanguageModel(nn.Module):
         # Create a positional embedding table, to make the model aware of the position of the tokens
         self.positional_embedding_table = nn.Embedding(context_window, number_of_embeddings)
 
+        # Create the attention head
+        self.attention_head = Head(number_of_embeddings)
+
     def forward(self, idx, targets=None):
         token_embeddings = self.token_embedding_table(idx)
 
         # Array of shape (context_window, number_of_embeddings)
-        position_embeddings = self.positional_embedding_table(torch.arange(context_window).to(device)) 
+        position_indexes = torch.arange(idx.shape[1]).to(device)
+        position_embeddings = self.positional_embedding_table(position_indexes) 
 
         x = token_embeddings + position_embeddings # Add the two embeddings together - (batch_size, context_window, number_of_embeddings) 
         # X represents now the embeddings of the tokens and their position in the context window
+
+        x = self.attention_head(x) # Apply the attention head
 
         logits = self.language_model_head(x)
 
@@ -89,7 +126,9 @@ class BigramLanguageModel(nn.Module):
 
     def generate(self, idx, max_new_tokens):
         for _ in range(max_new_tokens):
-            logits, _ = self.forward(idx)
+            idx_on_context_window = idx[:, -context_window:]
+
+            logits, _ = self.forward(idx_on_context_window)
             logits = logits[:, -1, :]
 
             probs = F.softmax(logits, dim=-1)
