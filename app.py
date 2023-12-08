@@ -94,6 +94,17 @@ class MultiHeadAttention(nn.Module):
         # Concatenate the outputs of the heads
         return torch.cat([head(x) for head in self.heads], dim=-1)
 
+class FeedForward(nn.Module):
+    def __init__(self, number_of_embeddings):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(number_of_embeddings, number_of_embeddings),
+            nn.ReLU(),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -111,6 +122,10 @@ class BigramLanguageModel(nn.Module):
         # Now we have 4 communication channels running in parallel to learn the attention scores
         # Each channel has a size of number_of_embeddings//4 that when concatenated, results in number_of_embeddings
 
+        self.feed_forward = FeedForward(number_of_embeddings)
+        # Create the feed forward layer, that will be applied after the attention head
+        # This layer will be applied to each token in the context window individually
+
     def forward(self, idx, targets=None):
         token_embeddings = self.token_embedding_table(idx)
 
@@ -122,6 +137,12 @@ class BigramLanguageModel(nn.Module):
         # X represents now the embeddings of the tokens and their position in the context window
 
         x = self.attention_head(x) # Apply the attention head
+
+        x = self.feed_forward(x) # Apply the feed forward layer
+        # The feed forward layer applies a non-linearity (ReLU activation) to each token's representation independently. 
+        # This processing step is crucial after the attention mechanism, which aggregates context information from the entire sequence into each token.
+        # The feed forward layer further refines these enriched representations.
+        # It's kind of "letting the network think for itself" and not just relying on the attention mechanism
 
         logits = self.language_model_head(x)
 
