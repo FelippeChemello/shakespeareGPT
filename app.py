@@ -119,12 +119,15 @@ class Block(nn.Module):
         # Computes the attention scores between the tokens in the context window
         self.feed_forward = FeedForward(number_of_embeddings)
 
+        self.layer_norm1 = nn.LayerNorm(number_of_embeddings)
+        self.layer_norm2 = nn.LayerNorm(number_of_embeddings)
+
     def forward(self, x):
         # We sum the input with the output of the self attention and the feed forward
         # To represent the residual connection
 
-        x = x + self.self_attention(x)
-        x = x + self.feed_forward(x)
+        x = x + self.self_attention(self.layer_norm1(x))
+        x = x + self.feed_forward(self.layer_norm2(x))
         return x
 
 class BigramLanguageModel(nn.Module):
@@ -143,6 +146,7 @@ class BigramLanguageModel(nn.Module):
             Block(number_of_embeddings, number_of_heads=4),
             Block(number_of_embeddings, number_of_heads=4),
             Block(number_of_embeddings, number_of_heads=4),
+            nn.LayerNorm(number_of_embeddings)
         )
 
     def forward(self, idx, targets=None):
