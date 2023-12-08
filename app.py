@@ -37,13 +37,10 @@ def get_batch(split):
     y = torch.stack([data[index+1:index+context_window+1] for index in split_indexes])
     return x.to(device), y.to(device)
 
-# Reduce the amount of memory used by the model
 @torch.no_grad()
 def estimate_loss():
     out = {}
-    # We do not want to train the model while evaluating
     model.eval()
-
     for split in ['train', 'val']:
         losses = torch.zeros(evaluation_iterations)
         for k in range(evaluation_iterations):
@@ -51,8 +48,6 @@ def estimate_loss():
             _, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
-
-    # We want to train the model after evaluating
     model.train()
     return out
 
@@ -60,22 +55,14 @@ def estimate_loss():
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
-        # Each token directly reads the logits of the next token from an embedding table
         self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
 
     def forward(self, idx, targets=None):
-        # idx and targets are of shape (batch_size, context_window)
-        
-        # The output of the embedding table is of shape (batch_size, context_window, vocab_size)
         logits = self.token_embedding_table(idx)
-        # Logits are the raw values produced by the last linear layer of a neural network.
-        # Before activation function is applied.
 
         if targets is None:
             return logits, None
         
-        # To calculate the loss we need to reshape the logits and targets to (batch_size * context_window, vocab_size)
-        # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html 
         batch_size, context_window_size, vocab_size = logits.shape
         logits = logits.view(batch_size * context_window_size, vocab_size)
         targets = targets.view(batch_size * context_window_size)
@@ -86,16 +73,13 @@ class BigramLanguageModel(nn.Module):
 
     def generate(self, idx, max_new_tokens):
         for _ in range(max_new_tokens):
-            # As we are generating a new token, we do not use the loss, as we do not have the targets
             logits, _ = self.forward(idx)
-
-            # For this moment, we are implementing a bigram model, so we only care about the last token of the context window
-            logits = logits[:, -1, :] # Shape (batch_size, vocab_size)
+            logits = logits[:, -1, :]
 
             probs = F.softmax(logits, dim=-1)
 
-            idx_new_token = torch.multinomial(probs, num_samples=1) # Shape (batch_size, 1)
-            idx = torch.cat([idx, idx_new_token], dim=1) # Shape (batch_size, context_window + 1)
+            idx_new_token = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat([idx, idx_new_token], dim=1)
         return idx
     
 model = BigramLanguageModel().to(device)
@@ -114,14 +98,8 @@ for iteration in range(training_iterations):
     x, y = get_batch('train')
 
     logits, loss = model(x, y)
-
-    # Clear the gradients of all optimized tensors
     optimizer.zero_grad()
-
-    # Compute gradient of the loss with respect to model parameters
     loss.backward()
-
-    # Perform a single optimization step
     optimizer.step()
 
 
