@@ -101,9 +101,9 @@ class FeedForward(nn.Module):
     def __init__(self, number_of_embeddings):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(number_of_embeddings, number_of_embeddings),
+            nn.Linear(number_of_embeddings, 4 * number_of_embeddings), # Multiplies by 4 to make the inner dimension bigger
             nn.ReLU(),
-            nn.Linear(number_of_embeddings, number_of_embeddings)
+            nn.Linear(4 * number_of_embeddings, number_of_embeddings) # Reduces the dimension back to the original
         )
 
     def forward(self, x):
