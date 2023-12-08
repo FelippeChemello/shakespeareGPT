@@ -9,6 +9,7 @@ learning_rate = 1e-2
 evaluation_iterations = 200
 evaluate_interval = 250
 training_iterations = 1000
+number_of_embeddings = 32
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(777)
@@ -55,10 +56,15 @@ def estimate_loss():
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+        # Changed from vocab size to number of embeddings, to make it more efficient
+        self.token_embedding_table = nn.Embedding(vocab_size, number_of_embeddings) 
+        
+        # Create a linear layer to predict the next token from the embeddings
+        self.language_model_head = nn.Linear(number_of_embeddings, vocab_size)
 
     def forward(self, idx, targets=None):
-        logits = self.token_embedding_table(idx)
+        token_embedded = self.token_embedding_table(idx)
+        logits = self.language_model_head(token_embedded)
 
         if targets is None:
             return logits, None
