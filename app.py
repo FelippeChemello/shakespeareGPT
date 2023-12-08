@@ -83,6 +83,16 @@ class Head(nn.Module):
         out = wei @ values
 
         return out
+    
+class MultiHeadAttention(nn.Module):
+    def __init__(self, number_of_heads, head_size):
+        super().__init__()
+        # Create the heads
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(number_of_heads)])
+
+    def forward(self, x):
+        # Concatenate the outputs of the heads
+        return torch.cat([head(x) for head in self.heads], dim=-1)
 
 class BigramLanguageModel(nn.Module):
     def __init__(self):
@@ -97,7 +107,9 @@ class BigramLanguageModel(nn.Module):
         self.positional_embedding_table = nn.Embedding(context_window, number_of_embeddings)
 
         # Create the attention head
-        self.attention_head = Head(number_of_embeddings)
+        self.attention_head = MultiHeadAttention(4, number_of_embeddings//4)
+        # Now we have 4 communication channels running in parallel to learn the attention scores
+        # Each channel has a size of number_of_embeddings//4 that when concatenated, results in number_of_embeddings
 
     def forward(self, idx, targets=None):
         token_embeddings = self.token_embedding_table(idx)
@@ -138,10 +150,6 @@ class BigramLanguageModel(nn.Module):
         return idx
     
 model = BigramLanguageModel().to(device)
-initial_idx = torch.zeros((1, 1), dtype=torch.long).to(device)
-
-before_training_idx = model.generate(initial_idx, max_new_tokens=100)
-print(f"Text generated before training: {decode(before_training_idx[0].tolist())}")
 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -157,6 +165,6 @@ for iteration in range(training_iterations):
     loss.backward()
     optimizer.step()
 
-
-post_training_idx = model.generate(initial_idx, max_new_tokens=100)
+initial_idx = torch.zeros((1, 1), dtype=torch.long).to(device)
+post_training_idx = model.generate(initial_idx, max_new_tokens=500)
 print(f"Text generated after training: {decode(post_training_idx[0].tolist())}")
