@@ -62,9 +62,19 @@ class BigramLanguageModel(nn.Module):
         # Create a linear layer to predict the next token from the embeddings
         self.language_model_head = nn.Linear(number_of_embeddings, vocab_size)
 
+        # Create a positional embedding table, to make the model aware of the position of the tokens
+        self.positional_embedding_table = nn.Embedding(context_window, number_of_embeddings)
+
     def forward(self, idx, targets=None):
-        token_embedded = self.token_embedding_table(idx)
-        logits = self.language_model_head(token_embedded)
+        token_embeddings = self.token_embedding_table(idx)
+
+        # Array of shape (context_window, number_of_embeddings)
+        position_embeddings = self.positional_embedding_table(torch.arange(context_window).to(device)) 
+
+        x = token_embeddings + position_embeddings # Add the two embeddings together - (batch_size, context_window, number_of_embeddings) 
+        # X represents now the embeddings of the tokens and their position in the context window
+
+        logits = self.language_model_head(x)
 
         if targets is None:
             return logits, None
