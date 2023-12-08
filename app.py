@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+from torch.nn import functional as F
 
 percent_of_training = 0.9
 context_window = 8
@@ -31,9 +33,8 @@ def get_batch(split):
     y = torch.stack([data[index+1:index+context_window+1] for index in split_indexes])
     return x.to(device), y.to(device)
 
-x, y = get_batch('train')
-for batch in range(batch_size):
-    for time in range(context_window):
-        context = x[batch, :time+1]
-        target = y[batch, time]
-        print(f'Context: {context.tolist()} -> Target: {target}')
+class BigramLanguageModel(nn.Module):
+    def __init__(self, vocab_size):
+        super().__init__()
+        # Cada token lê diretamente os logits do próximo token de um embedding table
+        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
