@@ -10,6 +10,9 @@ evaluation_iterations = 200
 evaluate_interval = 250
 training_iterations = 5000
 number_of_embeddings = 32
+number_of_layers = 3
+number_of_heads = 8
+dropout = 0.2
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(777)
@@ -61,6 +64,8 @@ class Head(nn.Module):
         self.value = nn.Linear(number_of_embeddings, head_size, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(context_window, context_window)))
 
+        self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
         batch_size, context_window_size, number_of_embeddings = x.shape
         keys = self.key(x)
@@ -78,6 +83,10 @@ class Head(nn.Module):
         # Apply the softmax to the attention scores
         wei = F.softmax(wei, dim=-1)
 
+        # Apply the dropout to prevent overfitting, it "turns off" some of the neurons during the training
+        # So that the model doesn't rely on a specific neuron
+        wei = self.dropout(wei)
+
         # Agrregate the values, by multiplying the scores with the values
         values = self.value(x)
         out = wei @ values
@@ -92,9 +101,11 @@ class MultiHeadAttention(nn.Module):
 
         self.projection = nn.Linear(number_of_embeddings, number_of_embeddings)
 
+        self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
         output = torch.cat([head(x) for head in self.heads], dim=-1)
-        output = self.projection(output)
+        output = self.dropout(self.projection(output))
         return output
 
 class FeedForward(nn.Module):
@@ -103,7 +114,8 @@ class FeedForward(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(number_of_embeddings, 4 * number_of_embeddings), # Multiplies by 4 to make the inner dimension bigger
             nn.ReLU(),
-            nn.Linear(4 * number_of_embeddings, number_of_embeddings) # Reduces the dimension back to the original
+            nn.Linear(4 * number_of_embeddings, number_of_embeddings), # Reduces the dimension back to the original
+            nn.Dropout(dropout)
         )
 
     def forward(self, x):
@@ -142,12 +154,9 @@ class BigramLanguageModel(nn.Module):
         # Create a positional embedding table, to make the model aware of the position of the tokens
         self.positional_embedding_table = nn.Embedding(context_window, number_of_embeddings)
 
-        self.blocks = nn.Sequential(
-            Block(number_of_embeddings, number_of_heads=4),
-            Block(number_of_embeddings, number_of_heads=4),
-            Block(number_of_embeddings, number_of_heads=4),
-            nn.LayerNorm(number_of_embeddings)
-        )
+        self.blocks = nn.Sequential(*[Block(number_of_embeddings, number_of_heads) for _ in range(number_of_layers)])
+
+        self.layer_norm = nn.LayerNorm(number_of_embeddings)
 
     def forward(self, idx, targets=None):
         token_embeddings = self.token_embedding_table(idx)
@@ -160,6 +169,8 @@ class BigramLanguageModel(nn.Module):
         # X represents now the embeddings of the tokens and their position in the context window
 
         x = self.blocks(x)
+
+        x = self.layer_norm(x)
 
         logits = self.language_model_head(x)
 
