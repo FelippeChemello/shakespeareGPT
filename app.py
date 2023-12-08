@@ -5,6 +5,10 @@ from torch.nn import functional as F
 percent_of_training = 0.9
 context_window = 8
 batch_size = 4
+learning_rate = 1e-2
+evaluation_iterations = 200
+evaluate_interval = 250
+training_iterations = 1000
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(777)
@@ -32,6 +36,26 @@ def get_batch(split):
     x = torch.stack([data[index:index+context_window] for index in split_indexes])
     y = torch.stack([data[index+1:index+context_window+1] for index in split_indexes])
     return x.to(device), y.to(device)
+
+# Reduce the amount of memory used by the model
+@torch.no_grad()
+def estimate_loss():
+    out = {}
+    # We do not want to train the model while evaluating
+    model.eval()
+
+    for split in ['train', 'val']:
+        losses = torch.zeros(evaluation_iterations)
+        for k in range(evaluation_iterations):
+            X, Y = get_batch(split)
+            _, loss = model(X, Y)
+            losses[k] = loss.item()
+        out[split] = losses.mean()
+
+    # We want to train the model after evaluating
+    model.train()
+    return out
+
 
 class BigramLanguageModel(nn.Module):
     def __init__(self):
@@ -75,8 +99,31 @@ class BigramLanguageModel(nn.Module):
         return idx
     
 model = BigramLanguageModel().to(device)
-
 initial_idx = torch.zeros((1, 1), dtype=torch.long).to(device)
-generated_text = model.generate(initial_idx, max_new_tokens=100)
 
-print("The model generated the following text: {}".format(decode(generated_text[0].tolist())))
+before_training_idx = model.generate(initial_idx, max_new_tokens=100)
+print(f"Text generated before training: {decode(before_training_idx[0].tolist())}")
+
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+for iteration in range(training_iterations):
+    if iteration % evaluate_interval == 0:
+        losses = estimate_loss()
+        print(f'Iteration: {iteration}, Train loss: {losses["train"]}, Val loss: {losses["val"]}')
+    
+    x, y = get_batch('train')
+
+    logits, loss = model(x, y)
+
+    # Clear the gradients of all optimized tensors
+    optimizer.zero_grad()
+
+    # Compute gradient of the loss with respect to model parameters
+    loss.backward()
+
+    # Perform a single optimization step
+    optimizer.step()
+
+
+post_training_idx = model.generate(initial_idx, max_new_tokens=100)
+print(f"Text generated after training: {decode(post_training_idx[0].tolist())}")
