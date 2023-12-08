@@ -59,9 +59,24 @@ class BigramLanguageModel(nn.Module):
         loss = F.cross_entropy(logits, targets)
 
         return logits, loss
+
+    def generate(self, idx, max_new_tokens):
+        for _ in range(max_new_tokens):
+            # As we are generating a new token, we do not use the loss, as we do not have the targets
+            logits, _ = self.forward(idx)
+
+            # For this moment, we are implementing a bigram model, so we only care about the last token of the context window
+            logits = logits[:, -1, :] # Shape (batch_size, vocab_size)
+
+            probs = F.softmax(logits, dim=-1)
+
+            idx_new_token = torch.multinomial(probs, num_samples=1) # Shape (batch_size, 1)
+            idx = torch.cat([idx, idx_new_token], dim=1) # Shape (batch_size, context_window + 1)
+        return idx
     
 model = BigramLanguageModel().to(device)
-x, y = get_batch('train')
-logits, loss = model(x, y)
-print("Logits shape:", logits.shape)
-print("The loss obtained is {:.4f} which is proximate to -log(1/len(vocab)) = {:.4f}".format(loss, -torch.log(torch.tensor(1/vocab_size))))
+
+initial_idx = torch.zeros((1, 1), dtype=torch.long).to(device)
+generated_text = model.generate(initial_idx, max_new_tokens=100)
+
+print("The model generated the following text: {}".format(decode(generated_text[0].tolist())))
