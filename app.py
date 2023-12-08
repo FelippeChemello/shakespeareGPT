@@ -3,17 +3,19 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 percent_of_training = 0.9
-context_window = 8
-batch_size = 4
-learning_rate = 1e-3
+context_window = 256
+batch_size = 64
+learning_rate = 3e-4
 evaluation_iterations = 200
 evaluate_interval = 250
 training_iterations = 5000
-number_of_embeddings = 32
-number_of_layers = 3
-number_of_heads = 8
+number_of_embeddings = 384
+number_of_layers = 6
+number_of_heads = 6
 dropout = 0.2
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+print(f'Using {device}')
 
 torch.manual_seed(777)
 
