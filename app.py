@@ -90,9 +90,12 @@ class MultiHeadAttention(nn.Module):
         # Create the heads
         self.heads = nn.ModuleList([Head(head_size) for _ in range(number_of_heads)])
 
+        self.projection = nn.Linear(number_of_embeddings, number_of_embeddings)
+
     def forward(self, x):
-        # Concatenate the outputs of the heads
-        return torch.cat([head(x) for head in self.heads], dim=-1)
+        output = torch.cat([head(x) for head in self.heads], dim=-1)
+        output = self.projection(output)
+        return output
 
 class FeedForward(nn.Module):
     def __init__(self, number_of_embeddings):
@@ -100,6 +103,7 @@ class FeedForward(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(number_of_embeddings, number_of_embeddings),
             nn.ReLU(),
+            nn.Linear(number_of_embeddings, number_of_embeddings)
         )
 
     def forward(self, x):
@@ -116,8 +120,11 @@ class Block(nn.Module):
         self.feed_forward = FeedForward(number_of_embeddings)
 
     def forward(self, x):
-        x = self.self_attention(x)
-        x = self.feed_forward(x)
+        # We sum the input with the output of the self attention and the feed forward
+        # To represent the residual connection
+
+        x = x + self.self_attention(x)
+        x = x + self.feed_forward(x)
         return x
 
 class BigramLanguageModel(nn.Module):
